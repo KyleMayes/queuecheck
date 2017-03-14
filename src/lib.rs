@@ -21,10 +21,93 @@
 #![cfg_attr(feature="clippy", warn(clippy))]
 
 use std::ops::{Range};
+use std::time::{Duration};
 
 //================================================
 // Macros
 //================================================
+
+// queuecheck_bench_throughput! __________________
+
+/// Benchmarks the throughput of the supplied queue.
+///
+/// # Example
+///
+/// ```
+/// # #[macro_use] extern crate queuecheck;
+/// # fn main() {
+/// use std::sync::mpsc::{self, Receiver, Sender};
+///
+/// let (producer, consumer) = mpsc::channel();
+///
+/// let ops = queuecheck_bench_throughput!(
+///     // warmup and measurement enqueue/dequeue operation pairs
+///     (1_000, 100_000),
+///     // producer threads
+///     vec![producer.clone(), producer],
+///     // consumer threads
+///     vec![consumer],
+///     // produce operation
+///     |p: &Sender<i32>, i: i32| p.send(i).unwrap(),
+///     // consume operation
+///     |c: &Receiver<i32>| c.try_recv().ok()
+/// );
+///
+/// println!("{:.3} operation/second", ops);
+/// # }
+/// ```
+#[macro_export]
+macro_rules! queuecheck_bench_throughput {
+    ($pairs:expr, $producers:expr, $consumers:expr, $produce:expr, $consume:expr) => ({
+        use std::thread;
+        use std::sync::{Arc, Barrier};
+        use std::time::{Duration, Instant};
+
+        let (warmup, measurement) = $pairs;
+        let producers = $producers;
+        let consumers = $consumers;
+        let plength = producers.len();
+        let clength = consumers.len();
+
+        let barrier = Arc::new(Barrier::new(plength + clength));
+
+        let pwranges = $crate::partition(plength, warmup).into_iter();
+        let pmranges = $crate::partition(plength, measurement).into_iter();
+        let pthreads = producers.into_iter().zip(pwranges).zip(pmranges).map(|((p, w), m)| {
+            let barrier = barrier.clone();
+            thread::spawn(move || {
+                barrier.wait();
+                // Warmup
+                for index in w { $produce(&p, index); }
+                // Measurement
+                let start = Instant::now();
+                for index in m { $produce(&p, index); }
+                Instant::now() - start
+            })
+        }).collect::<Vec<_>>().into_iter();
+
+        let cwranges = $crate::partition(clength, warmup).into_iter();
+        let cmranges = $crate::partition(clength, measurement).into_iter();
+        let cthreads = consumers.into_iter().zip(cwranges).zip(cmranges).map(|((c, w), m)| {
+            let barrier = barrier.clone();
+            thread::spawn(move || {
+                barrier.wait();
+                // Warmup
+                for _ in w { while $consume(&c).is_none() { } }
+                // Measurement
+                let start = Instant::now();
+                for _ in m { while $consume(&c).is_none() { } }
+                Instant::now() - start
+            })
+        }).collect::<Vec<_>>().into_iter();
+
+        let mut duration = Duration::default();
+        duration += pthreads.map(|t| t.join().unwrap()).sum();
+        duration += cthreads.map(|t| t.join().unwrap()).sum();
+        duration /= (clength + plength) as u32;
+        (measurement as f64 / $crate::nanoseconds(duration)) * 1_000_000_000.0
+    });
+}
 
 // queuecheck_test! ______________________________
 
@@ -108,6 +191,12 @@ macro_rules! queuecheck_test {
 //================================================
 // Functions
 //================================================
+
+/// Returns the supplied duration converted to nanoseconds.
+#[doc(hidden)]
+pub fn nanoseconds(duration: Duration) -> f64 {
+    (duration.as_secs() * 1_000_000_000) as f64 + duration.subsec_nanos() as f64
+}
 
 /// Partitions the supplied number of operations into ranges.
 #[doc(hidden)]
