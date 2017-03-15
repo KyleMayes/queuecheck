@@ -27,6 +27,97 @@ use std::time::{Duration};
 // Macros
 //================================================
 
+// queuecheck_bench_latency! _____________________
+
+/// Benchmarks the latency of the supplied queue.
+///
+/// # Example
+///
+/// ```
+/// # #[macro_use] extern crate queuecheck;
+/// # fn main() {
+/// use std::sync::mpsc::{self, Receiver, Sender};
+///
+/// let (producer, consumer) = mpsc::channel();
+///
+/// let latency = queuecheck_bench_latency!(
+///     // warmup and measurement enqueue/dequeue operation pairs
+///     (1_000, 100_000),
+///     // producer threads
+///     vec![producer.clone(), producer],
+///     // consumer threads
+///     vec![consumer],
+///     // produce operation
+///     |p: &Sender<i32>, i: i32| p.send(i).unwrap(),
+///     // consume operation
+///     |c: &Receiver<i32>| c.try_recv().ok()
+/// );
+///
+/// println!("produce");
+/// println!("  50%: {:.3}ns", latency.produce.percentile(50.0));
+/// println!("  70%: {:.3}ns", latency.produce.percentile(70.0));
+/// println!("  90%: {:.3}ns", latency.produce.percentile(90.0));
+/// println!("consume");
+/// println!("  50%: {:.3}ns", latency.consume.percentile(50.0));
+/// println!("  70%: {:.3}ns", latency.consume.percentile(70.0));
+/// println!("  90%: {:.3}ns", latency.consume.percentile(90.0));
+/// # }
+/// ```
+#[macro_export]
+macro_rules! queuecheck_bench_latency {
+    ($pairs:expr, $producers:expr, $consumers:expr, $produce:expr, $consume:expr) => ({
+        use std::thread;
+        use std::sync::{Arc, Barrier};
+        use std::time::{Instant};
+
+        let (warmup, measurement) = $pairs;
+        let producers = $producers;
+        let consumers = $consumers;
+        let plength = producers.len();
+        let clength = consumers.len();
+
+        let barrier = Arc::new(Barrier::new(plength + clength));
+
+        let pwranges = $crate::partition(plength, warmup).into_iter();
+        let pmranges = $crate::partition(plength, measurement).into_iter();
+        let pthreads = producers.into_iter().zip(pwranges).zip(pmranges).map(|((p, w), m)| {
+            let barrier = barrier.clone();
+            thread::spawn(move || {
+                barrier.wait();
+                // Warmup
+                for index in w { $produce(&p, index); }
+                // Measurement
+                m.map(|i| {
+                    let start = Instant::now();
+                    $produce(&p, i);
+                    Instant::now() - start
+                }).collect::<Vec<_>>().into_iter()
+            })
+        }).collect::<Vec<_>>().into_iter();
+
+        let cwranges = $crate::partition(clength, warmup).into_iter();
+        let cmranges = $crate::partition(clength, measurement).into_iter();
+        let cthreads = consumers.into_iter().zip(cwranges).zip(cmranges).map(|((c, w), m)| {
+            let barrier = barrier.clone();
+            thread::spawn(move || {
+                barrier.wait();
+                // Warmup
+                for _ in w { while $consume(&c).is_none() { } }
+                // Measurement
+                m.map(|_| {
+                    let start = Instant::now();
+                    while $consume(&c).is_none() { }
+                    Instant::now() - start
+                }).collect::<Vec<_>>().into_iter()
+            })
+        }).collect::<Vec<_>>().into_iter();
+
+        let produce = pthreads.flat_map(|t| t.join().unwrap().map($crate::nanoseconds)).collect();
+        let consume = cthreads.flat_map(|t| t.join().unwrap().map($crate::nanoseconds)).collect();
+        $crate::Latency::new(produce, consume)
+    });
+}
+
 // queuecheck_bench_throughput! __________________
 
 /// Benchmarks the throughput of the supplied queue.
@@ -186,6 +277,48 @@ macro_rules! queuecheck_test {
             panic!("dropped: {:?}, invalid: {:?}", expected, unexpected);
         }
     });
+}
+
+//================================================
+// Structs
+//================================================
+
+// Data __________________________________________
+
+/// A collection of data.
+#[derive(Clone, Debug)]
+pub struct Data(Vec<f64>);
+
+impl Data {
+    //- Accessors --------------------------------
+
+    /// Returns the percentile with the supplied rank.
+    pub fn percentile(&self, rank: f64) -> f64 {
+        assert!(rank >= 0.0 && rank <= 100.0, "`rank` must be in the range [0.0, 100.0]");
+        self.0[((self.0.len() - 1) as f64 * (rank / 100.0)) as usize]
+    }
+}
+
+// Latency _______________________________________
+
+/// A measurement of the latency of a queue.
+#[derive(Clone, Debug)]
+pub struct Latency {
+    /// The enqueue operation latencies in nanoseconds.
+    pub produce: Data,
+    /// The dequeue operation latencies in nanoseconds.
+    pub consume: Data,
+}
+
+impl Latency {
+    //- Constructors -----------------------------
+
+    /// Constructs a new `Latency`.
+    pub fn new(mut produce: Vec<f64>, mut consume: Vec<f64>) -> Self {
+        produce.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        consume.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        Latency { produce: Data(produce), consume: Data(consume) }
+    }
 }
 
 //================================================
