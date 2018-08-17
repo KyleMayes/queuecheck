@@ -29,6 +29,10 @@ use std::time::{Duration};
 ///
 /// # Example
 ///
+/// The below benchmarks the latency of the unbounded MPMC queue from the standard library by
+/// producing 100,000 items using two producer threads which are then consumed by one consumer
+/// thread.
+///
 /// ```
 /// # #[macro_use] extern crate queuecheck;
 /// # fn main() {
@@ -120,6 +124,10 @@ macro_rules! queuecheck_bench_latency {
 ///
 /// # Example
 ///
+/// The below benchmarks the throughput of the unbounded MPMC queue from the standard library by
+/// producing 100,000 items using two producer threads which are then consumed by one consumer
+/// thread.
+///
 /// ```
 /// # #[macro_use] extern crate queuecheck;
 /// # fn main() {
@@ -201,6 +209,9 @@ macro_rules! queuecheck_bench_throughput {
 /// Tests the supplied queue.
 ///
 /// # Example
+///
+/// The below tests the unbounded MPMC queue from the standard library by producing 100,000 items
+/// using two producer threads which are then consumed by one consumer thread.
 ///
 /// ```
 /// # #[macro_use] extern crate queuecheck;
