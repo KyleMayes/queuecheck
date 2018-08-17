@@ -12,7 +12,3 @@ description = "A queue testing and benchmarking library."
 
 documentation = "https://docs.rs/queuecheck"
 repository = "https://github.com/KyleMayes/queuecheck"
-
-[dependencies]
-
-clippy = { version = "0.0.*", optional = true }
