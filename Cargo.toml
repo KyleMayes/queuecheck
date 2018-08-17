@@ -12,3 +12,5 @@ description = "A thread-safe queue testing and benchmarking library."
 
 documentation = "https://docs.rs/queuecheck"
 repository = "https://github.com/KyleMayes/queuecheck"
+
+keywords = ["queue", "lock-free", "wait-free"]
