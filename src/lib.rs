@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A queue testing and benchmarking library.
+//! A thread-safe queue testing and benchmarking library.
 
 #![warn(missing_copy_implementations, missing_debug_implementations, missing_docs)]
 
