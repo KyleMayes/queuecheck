@@ -53,15 +53,26 @@ use std::time::{Duration};
 ///     |c: &Receiver<i32>| c.try_recv().ok()
 /// );
 ///
-/// println!("produce");
-/// println!("  50%: {:.3}ns", latency.produce.percentile(50.0));
-/// println!("  70%: {:.3}ns", latency.produce.percentile(70.0));
-/// println!("  90%: {:.3}ns", latency.produce.percentile(90.0));
-/// println!("consume");
-/// println!("  50%: {:.3}ns", latency.consume.percentile(50.0));
-/// println!("  70%: {:.3}ns", latency.consume.percentile(70.0));
-/// println!("  90%: {:.3}ns", latency.consume.percentile(90.0));
+/// latency.report("mpmc", &[50.0, 70.0, 90.0, 95.0, 99.09]);
 /// # }
+/// ```
+///
+/// ## Sample Output
+///
+/// ```console
+/// mpmc
+///   produce
+///     50%:       239.00ns
+///     70%:       253.00ns
+///     90%:       278.00ns
+///     95%:       294.00ns
+///     99%:       970.00ns
+///   consume
+///     50%:       178.00ns
+///     70%:       249.00ns
+///     90%:       279.00ns
+///     95%:       295.00ns
+///     99%:       1_578.00ns
 /// ```
 #[macro_export]
 macro_rules! queuecheck_bench_latency {
@@ -304,6 +315,17 @@ impl Data {
         assert!(rank >= 0.0 && rank <= 100.0, "`rank` must be in the range [0.0, 100.0]");
         self.0[((self.0.len() - 1) as f64 * (rank / 100.0)) as usize]
     }
+
+    //- Accessors --------------------------------
+
+    /// Prints a data report to the console for the percentiles with the supplied ranks.
+    fn report(&self, name: &str, ranks: &[f64]) {
+        println!("  {}", name);
+        for rank in ranks {
+            let name = format!("{}%:", rank);
+            println!("    {:<10} {}ns", name, thousands(self.percentile(*rank), 2));
+        }
+    }
 }
 
 // Latency _______________________________________
@@ -326,11 +348,31 @@ impl Latency {
         consume.sort_by(|a, b| a.partial_cmp(b).unwrap());
         Latency { produce: Data(produce), consume: Data(consume) }
     }
+
+    //- Accessors --------------------------------
+
+    /// Prints a latency report to the console for the percentiles with the supplied ranks.
+    pub fn report(&self, name: &str, ranks: &[f64]) {
+        println!("{}", name);
+        self.produce.report("produce", ranks);
+        self.consume.report("consume", ranks);
+    }
 }
 
 //================================================
 // Functions
 //================================================
+
+/// Returns the supplied number formatted with thousands separators.
+fn thousands(number: f64, precision: usize) -> String {
+    let mut string = format!("{:.*}", precision, number);
+    let mut index = string.find('.').unwrap();
+    while index > 3 {
+        index -= 3;
+        string.insert(index, '_');
+    }
+    string
+}
 
 /// Returns the supplied duration converted to nanoseconds.
 #[doc(hidden)]

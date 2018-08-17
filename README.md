@@ -59,14 +59,7 @@ let latency = queuecheck_bench_latency!(
     |c: &Receiver<i32>| c.try_recv().ok()
 );
 
-println!("produce");
-println!("  50%: {:.3}ns", latency.produce.percentile(50.0));
-println!("  70%: {:.3}ns", latency.produce.percentile(70.0));
-println!("  90%: {:.3}ns", latency.produce.percentile(90.0));
-println!("consume");
-println!("  50%: {:.3}ns", latency.consume.percentile(50.0));
-println!("  70%: {:.3}ns", latency.consume.percentile(70.0));
-println!("  90%: {:.3}ns", latency.consume.percentile(90.0));
+latency.report("mpmc", &[50.0, 70.0, 90.0, 95.0, 99.09]);
 ```
 
 #### Throughput
