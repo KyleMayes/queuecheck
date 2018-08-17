@@ -10,7 +10,7 @@ license = "Apache-2.0"
 
 description = "A queue testing and benchmarking library."
 
-documentation = "https://kylemayes.github.io/queuecheck/queuecheck"
+documentation = "https://docs.rs/queuecheck"
 repository = "https://github.com/KyleMayes/queuecheck"
 
 [dependencies]
